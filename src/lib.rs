@@ -58,9 +58,11 @@ pub use err::Error;
 
 use std::sync::Arc;
 
-use crate::client::Client;
+pub use crate::client::Client;
 use crate::nq::NotifyQueue;
-use crate::server::Server;
+pub use crate::server::Server;
+pub use rctx::ReplyContext;
+
 
 /// Create a pair of linked `Server` and `Client` object.
 ///

@@ -4,6 +4,13 @@ use crate::nq::NotifyQueue;
 use crate::rctx::ReplyContext;
 use crate::srvq::ServerQueueNode;
 
+/// Representation of a server object.
+///
+/// Each instantiation of a `Client` object is itself an isolated client with
+/// regards to the server context.  By cloning a client a new independent
+/// client is created.  (Independent here meaning that it is still tied to the
+/// same server object, but it the new client can be passed to a separate
+/// thread and can independently make calls to the server).
 pub struct Server<S, R> {
   pub(crate) srvq: Arc<NotifyQueue<ServerQueueNode<S, R>>>
 }

@@ -48,8 +48,8 @@ impl<R> Clone for InnerReplyContext<R> {
 }
 
 
-/// Structure instantiated whenever a client has sent a message and is waiting
-/// for a reply.
+/// Structure instantiated by server when a client has sent a message and is
+/// waiting for a reply.
 pub struct ReplyContext<R> {
   pub(crate) inner: InnerReplyContext<R>,
   did_reply: bool

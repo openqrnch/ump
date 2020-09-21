@@ -5,7 +5,7 @@ use crate::nq::NotifyQueue;
 use crate::rctx::{self, InnerReplyContext};
 use crate::srvq::ServerQueueNode;
 
-/// Representation of a client object.
+/// Representation of a clonable client object.
 ///
 /// Each instantiation of a `Client` object is itself an isolated client with
 /// regards to the server context.  By cloning a client a new independent
