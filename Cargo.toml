@@ -1,0 +1,12 @@
+[package]
+name = "ump"
+version = "0.1.0"
+authors = ["Jan Danielsson <jan.danielsson@qrnch.com>"]
+edition = "2018"
+license = "0BSD"
+categories = [ "concurrency", "asynchronous" ]
+keywords = [ "channel", "threads", "sync", "message-passing" ]
+repository = "https://github.com/openqrnch/ump"
+description = "Micro message passing library for threads/tasks communication."
+
+[dependencies]
