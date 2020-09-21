@@ -66,7 +66,7 @@ impl<R> ReplyContext<R> {
     drop(mg);
 
     // Tell the client that it has a reply to pick up
-    //println!("Signal client that a reply is available!");
+    //eprintln!("Signal client that a reply is available!");
     self.inner.signal.notify_one();
 
     self.did_reply = true;
@@ -81,7 +81,7 @@ impl<R> ReplyContext<R> {
 impl<R> Drop for ReplyContext<R> {
   fn drop(&mut self) {
     if self.did_reply == false {
-      eprintln!("Warning: ReplyContext didn't reply!");
+      //eprintln!("Warning: ReplyContext didn't reply!");
       let mut do_signal: bool = false;
       let mut mg = self.inner.data.lock().unwrap();
       match *mg {
