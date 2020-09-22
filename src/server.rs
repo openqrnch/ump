@@ -4,17 +4,25 @@ use crate::nq::NotifyQueue;
 use crate::rctx::ReplyContext;
 use crate::srvq::ServerQueueNode;
 
+/// Representation of a server object.
+///
+/// Each instantiation of a `Client` object is itself an isolated client with
+/// regards to the server context.  By cloning a client a new independent
+/// client is created.  (Independent here meaning that it is still tied to the
+/// same server object, but it the new client can be passed to a separate
+/// thread and can independently make calls to the server).
 pub struct Server<S, R> {
   pub(crate) srvq: Arc<NotifyQueue<ServerQueueNode<S, R>>>
 }
 
 impl<S, R> Server<S, R> {
-  /// Block and wait for an incoming message from a client.
+  /// Block and wait for an incoming message from a
+  /// [`Client`](struct.Client.html).
   ///
   /// Returns the message sent by the client and a reply context.  The server
   /// must call `reply()` on the reply context to pass a return value to the
   /// client.
-  pub fn wait(&mut self) -> (S, ReplyContext<R>) {
+  pub fn wait(&self) -> (S, ReplyContext<R>) {
     // Lock server queue
     let mut mg = self.srvq.lockq();
 

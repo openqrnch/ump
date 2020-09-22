@@ -3,7 +3,7 @@ use std::thread;
 use ump::channel;
 
 fn main() {
-  let (mut server, mut client) = channel::<String, String>();
+  let (server, client) = channel::<String, String>();
 
   let server_thread = thread::spawn(move || {
     // Wait for data to arrive from a client

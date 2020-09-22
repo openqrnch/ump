@@ -2,8 +2,9 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use crate::err::Error;
 
+/// Internal reply context state.
 pub(crate) enum State<R> {
-  /// Waiting for a reply
+  /// Waiting for a reply.
   Waiting,
 
   /// A message has been returned.
@@ -36,6 +37,51 @@ impl<R> InnerReplyContext<R> {
       data: Arc::new(Mutex::new(data_state))
     }
   }
+
+  /// Wait for a reply, and return the reply data once it has been received.
+  ///
+  /// # Panics
+  /// This function will panic if:
+  /// - the internal mutex can not be locked.  It it the responsibility of the
+  ///   application to not poison the mutex.
+  /// - a bad internal state is detected.  This is something that should only
+  ///   happen if there's a bug in the library which causes an invalid state to
+  ///   occur.  If this has happened the promises about the library's behavior
+  ///   can no longer be guaranteed, so it panics.
+  pub(crate) fn wait(&self) -> Result<R, Error> {
+    // Hard croak on mutex errors
+    let mut mg = self.data.lock().unwrap();
+
+    let msg = loop {
+      match &*mg {
+        State::Waiting => {
+          // Still waiting for server to report back with data
+          mg = self.signal.wait(mg).unwrap();
+          continue;
+        }
+        State::Message(_msg) => {
+          // Set Finalized state and return message
+          if let State::Message(msg) =
+            std::mem::replace(&mut *mg, State::Finalized)
+          {
+            break msg;
+          } else {
+            // We're *really* in trouble if this happens ..
+            panic!("Unexpected state; not State::Message()");
+          }
+        }
+        State::Finalized => {
+          panic!("Unexpected state State::Finalized");
+        }
+        State::Aborted => {
+          return Err(Error::Aborted);
+        }
+      }
+    };
+    drop(mg);
+
+    Ok(msg)
+  }
 }
 
 impl<R> Clone for InnerReplyContext<R> {
@@ -48,8 +94,8 @@ impl<R> Clone for InnerReplyContext<R> {
 }
 
 
-/// Structure instantiated whenever a client has sent a message and is waiting
-/// for a reply.
+/// Structure instantiated by server when a client has sent a message and is
+/// waiting for a reply.
 pub struct ReplyContext<R> {
   pub(crate) inner: InnerReplyContext<R>,
   did_reply: bool
@@ -60,6 +106,8 @@ impl<R> ReplyContext<R> {
   ///
   /// Calling this method is mandatory.  The client will block until it has
   /// been signalled by this method.
+  ///
+  /// The reply context is independent of the `Server`.
   pub fn reply(mut self, data: R) -> Result<(), Error> {
     let mut mg = self.inner.data.lock().unwrap();
     *mg = State::Message(data);

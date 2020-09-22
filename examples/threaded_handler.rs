@@ -15,7 +15,7 @@ fn main() {
   };
 
   // Create server and original client
-  let (mut server, client) = channel::<String, String>();
+  let (server, client) = channel::<String, String>();
 
   // Launch server thread
   let server_thread = thread::spawn(move || {
@@ -48,7 +48,7 @@ fn main() {
 
   let mut join_handles = Vec::new();
   for i in 0..nclients {
-    let mut client_clone = client.clone();
+    let client_clone = client.clone();
     let client_thread = thread::spawn(move || {
       let name = format!("Client {}", i + 1);
       let msg = String::from(&name);

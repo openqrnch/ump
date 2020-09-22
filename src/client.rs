@@ -2,16 +2,16 @@ use std::sync::Weak;
 
 use crate::err::Error;
 use crate::nq::NotifyQueue;
-use crate::rctx::{self, InnerReplyContext};
+use crate::rctx::InnerReplyContext;
 use crate::srvq::ServerQueueNode;
 
-/// Representation of a client object.
+/// Representation of a clonable client object.
 ///
 /// Each instantiation of a `Client` object is itself an isolated client with
 /// regards to the server context.  By cloning a client a new independent
 /// client is created.  (Independent here meaning that it is still tied to the
-/// same server object, but it the new client can be passed to a separate
-/// thread and can independently make calls to the server).
+/// same server object, but the new client can be passed to a separate thread
+/// and can independently make calls to the server).
 pub struct Client<S, R> {
   /// Weak reference to server queue.
   ///
@@ -21,16 +21,27 @@ pub struct Client<S, R> {
 }
 
 impl<S, R> Client<S, R> {
-  /// Send a message to the server and expect a reply.
+  /// Send a message to the server, wait for a reply, and return the reply.
   ///
-  /// # Invariants
-  /// - A complete send-and-fetch-reply must complete before this function
-  ///   returns success.
-  /// - Because this function takes a mutable reference to self it can not be
-  ///   called reentrantly.
-  pub fn send(&mut self, out: S) -> Result<R, Error> {
-    // # Hand over message to server #########################################
-
+  /// A complete round-trip (the message is delivered to the server, and the
+  /// server sends a reply) must complete before this function returns
+  /// success.
+  ///
+  /// This method is _currently_ reentrant: It is safe to use share a single
+  /// `Client` among multiple threads.  _This may change in the future_; it's
+  /// best not to rely on this.  The recommended way to send messages to a
+  /// server from multiple threads is to clone the `Client` and move the clones
+  /// to the separate threads.
+  ///
+  /// # Return
+  /// On success the function will return `Ok(msg)`.
+  ///
+  /// If the linked server object has been released
+  /// `Err(Error:ServerDisappeared)` will be returned.
+  ///
+  /// If the server never replied to the message and the reply context was
+  /// dropped `Err(Error::Aborted)` will be returned.
+  pub fn send(&self, out: S) -> Result<R, Error> {
     // Make sure the server still lives; Weak -> Arc
     let srvq = match self.srvq.upgrade() {
       Some(srvq) => srvq,
@@ -42,68 +53,29 @@ impl<S, R> Client<S, R> {
     // and stored in the context, and thus be reused for reach client call.
     // One side-effect is that some of the state semantics becomes more
     // complicated.
-    // The first checkin in the repo has such an implementation, but it seems
-    // to have some more corner cases that aren't properly handled.
+    // The central repo has such an implementation checked in, but it seems to
+    // have some more corner cases that aren't properly handled.
     let rctx = InnerReplyContext::new();
 
-    // Lock the server queue
+    // Lock the server queue, put the outbound message and the reply context
+    // into the server's queue, unlock queue and notify the server that a new
+    // message has arrived.
     let mut q = srvq.lockq();
-
-    // Put reply into queue
     q.push_back(ServerQueueNode {
       msg: out,
       reply: rctx.clone()
     });
-
-    // unlock server queue asap
     drop(q);
-
-    // notify server that a message is available for pickup
     srvq.notify();
 
-    // # Wait for a reply ####################################################
-
-    // Lock reply data
-    let mut mg = rctx.data.lock().unwrap();
-
-    // Wait for reply
-    let msg = loop {
-      match &*mg {
-        rctx::State::Waiting => {
-          // Wait until server reports back that there's data
-          mg = rctx.signal.wait(mg).unwrap();
-          continue;
-        }
-        rctx::State::Message(_msg) => {
-          // Revert back to Wairing state and return the message.
-          if let rctx::State::Message(msg) =
-            std::mem::replace(&mut *mg, rctx::State::Finalized)
-          {
-            break msg;
-          } else {
-            // We're *really* in trouble if this happens ..
-            let s = String::from("Not State::Message()");
-            return Err(Error::BadInternalState(s));
-          }
-        }
-        rctx::State::Finalized => {
-          let s = String::from("Finalized instead of State::Message()");
-          return Err(Error::BadInternalState(s));
-        }
-        rctx::State::Aborted => {
-          return Err(Error::Aborted);
-        }
-      }
-    };
-    drop(mg);
-
-    Ok(msg)
+    // Wait for a reply on the reply context
+    rctx.wait()
   }
 }
 
 
 /// When a client is cloned then create an entirely new client.  It will be
-/// tied to the same server, but in all other respects the clone is a
+/// linked to the same server, but in all other respects the clone is a
 /// completely new client.
 ///
 /// This means that a cloned client can be passed to a new thread/task and make

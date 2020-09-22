@@ -1,12 +1,34 @@
-//! Micro Message Pass (ump) is a library that has some similarities with the
-//! common mpsc channel libraries.  The most notable difference is that in ump
-//! the channel is bidirectional.  ump uses the terms "client"/"server"
-//! rather than "tx"/"rx", and each message pass from a client to a server
-//! requires a response from the server.
+//! Micro Message Pass (ump) is a library for passing messages between
+//! thread/tasks.  It has some similarities with the common mpsc channel
+//! libraries, but with the most notable difference that in `ump` the channel
+//! is bidirectional.  The terms "client"/"server" are used rather than
+//! "tx"/"rx".  In `ump` the client initiates all message transfers, and every
+//! message pass from a client to a server requires a response from the server.
 //!
 //! The primary purpose of ump is to create simple RPC like designs, but
-//! between threads/tasks in a process rather than between processes over a
-//! network.
+//! between threads/tasks within a process rather than between processes over
+//! networks.
+//!
+//! # High-level usage overview
+//! An application calls [`channel`](fn.channel.html) to create a linked pair
+//! of a [`Server`](struct.Server.html) and a [`Client`](struct.Client.html).
+//!
+//! The server calls [`Server::wait()`](struct.Server.html#method.wait), which
+//! blocks and waits for an incoming message from a client.
+//!
+//! A client, on a separate thread, calls
+//! [`Client::send()`](struct.Client.html#method.send) to send a message to the
+//! server.
+//!
+//! The server's call to `wait()` returns two objects:  The message sent by the
+//! client, and a [`ReplyContext`](struct.ReplyContext.html).  After processing
+//! its application-defined message, the server *must* call the
+//! [`ReplyContext::reply()`](struct.ReplyContext.html#method.reply) on the
+//! returned reply context object to return a reply message to the client.
+//! Typically the server calls `wait()` again to wait for next message from a
+//! client.
+//!
+//! The client receives the reply from the server and processes it.
 //!
 //! # Example
 //! ```
@@ -15,7 +37,7 @@
 //! use ump::channel;
 //!
 //! fn main() {
-//!  let (mut server, mut client) = channel::<String, String>();
+//!  let (server, client) = channel::<String, String>();
 //!
 //!  let server_thread = thread::spawn(move || {
 //!    // Wait for data to arrive from a client
@@ -43,9 +65,22 @@
 //!  server_thread.join().unwrap();
 //! }
 //! ```
+//! (In practice it's more likely that the channel types are `enum`s used to
+//! indicate command/return type with associated data).
 //!
-//! In practice it's more likely that the channel types are `enum`s used to
-//! indicate command/return type with associated data.
+//! # Sharing Clients
+//! Clone `Client` object to use multiple clients against a single `Server`.
+//! While it is _currently_ possible to share a single `Client` among multiple
+//! threads, *this may not be allowed in the future*.  I.e. future versions may
+//! not allow the pattern `Arc<Client<S, R>>` to share a client among multiple
+//! threads.  Instead, clone and pass the ownership of clones to other threads.
+//!
+//! # Semantics
+//! The reply contexts are independent of the `Server` context.  This has some
+//! useful implications for server threads that spawn separate threads to
+//! process messages and return replies:  *The server can safely terminate
+//! while there are clients waiting for replies* (implied: the server can
+//! safely terminate while there are reply contexts in-flight).
 
 mod client;
 mod err;
@@ -58,17 +93,20 @@ pub use err::Error;
 
 use std::sync::Arc;
 
-use crate::client::Client;
+pub use crate::client::Client;
 use crate::nq::NotifyQueue;
-use crate::server::Server;
+pub use crate::server::Server;
+pub use rctx::ReplyContext;
+
 
 /// Create a pair of linked `Server` and `Client` object.
 ///
 /// The `Server` object is used to wait for incoming messages from connected
-/// clients.  Once a message arrives it must reply to it using a reply context
-/// that's returned to it in the same call that returned the message.
+/// clients.  Once a message arrives it must reply to it using a
+/// [`ReplyContext`](struct.ReplyContext.html) that's returned to it in the
+/// same call that returned the message.
 ///
-/// The `Client` object can be used to send messages to the `Server.  The
+/// The `Client` object can be used to send messages to the `Server`.  The
 /// `send()` call will not return until the server has replied.
 ///
 /// Clients can be cloned; each clone will create a new client object that is

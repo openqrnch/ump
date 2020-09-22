@@ -1,5 +1,6 @@
 use std::fmt;
 
+/// Module-specific error codes.
 #[derive(Debug)]
 pub enum Error {
   ServerDisappeared,

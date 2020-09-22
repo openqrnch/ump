@@ -1,6 +1,6 @@
 [package]
 name = "ump"
-version = "0.1.1"
+version = "0.5.0"
 authors = ["Jan Danielsson <jan.danielsson@qrnch.com>"]
 edition = "2018"
 license = "0BSD"
@@ -10,3 +10,11 @@ repository = "https://github.com/openqrnch/ump"
 description = "Micro message passing library for threads/tasks communication."
 
 [dependencies]
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "add_server"
+harness = false
+

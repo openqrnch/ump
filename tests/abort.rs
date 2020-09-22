@@ -4,7 +4,7 @@ use ump::{channel, Error};
 
 #[test]
 fn expect_abort() {
-  let (mut server, mut client) = channel::<String, String>();
+  let (server, client) = channel::<String, String>();
 
   let server_thread = thread::spawn(move || {
     // Wait for data to arrive from a client
