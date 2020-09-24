@@ -4,7 +4,7 @@ use sigq::Queue as NotifyQueue;
 
 use crate::err::Error;
 use crate::rctx::InnerReplyContext;
-use crate::srvq::ServerQueueNode;
+use crate::server::ServerQueueNode;
 
 /// Representation of a clonable client object.
 ///

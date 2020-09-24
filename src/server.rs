@@ -2,8 +2,16 @@ use std::sync::Arc;
 
 use sigq::Queue as NotifyQueue;
 
-use crate::rctx::ReplyContext;
-use crate::srvq::ServerQueueNode;
+use crate::rctx::{InnerReplyContext, ReplyContext};
+
+
+pub(crate) struct ServerQueueNode<S, R> {
+  /// Raw message being sent from the client to the server.
+  pub(crate) msg: S,
+
+  /// Keep track of data needed to share reply data.
+  pub(crate) reply: InnerReplyContext<R>
+}
 
 /// Representation of a server object.
 ///

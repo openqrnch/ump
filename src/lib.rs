@@ -106,7 +106,6 @@ mod client;
 mod err;
 mod rctx;
 mod server;
-mod srvq;
 
 pub use err::Error;
 
