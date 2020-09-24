@@ -25,7 +25,7 @@ fn main() {
     while count < nclients {
       // Wait for data to arrive from a client
       println!("Server waiting for message ..");
-      let (data, cctx) = server.wait();
+      let (data, rctx) = server.wait();
 
       // Move the received data and reply context into a thread to allow other
       // messages to be received while processing this message.
@@ -37,7 +37,7 @@ fn main() {
         // Reply to client
         let reply = format!("Hello, {}!", data);
         println!("Server replying '{}'", reply);
-        cctx.reply(reply).unwrap();
+        rctx.reply(reply).unwrap();
       });
 
       // Increase message counter

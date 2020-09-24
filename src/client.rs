@@ -1,7 +1,8 @@
 use std::sync::Weak;
 
+use sigq::Queue as NotifyQueue;
+
 use crate::err::Error;
-use crate::nq::NotifyQueue;
 use crate::rctx::InnerReplyContext;
 use crate::srvq::ServerQueueNode;
 
@@ -20,7 +21,10 @@ pub struct Client<S, R> {
   pub(crate) srvq: Weak<NotifyQueue<ServerQueueNode<S, R>>>
 }
 
-impl<S, R> Client<S, R> {
+impl<S, R> Client<S, R>
+where
+  R: 'static + Send
+{
   /// Send a message to the server, wait for a reply, and return the reply.
   ///
   /// A complete round-trip (the message is delivered to the server, and the
@@ -57,19 +61,32 @@ impl<S, R> Client<S, R> {
     // have some more corner cases that aren't properly handled.
     let rctx = InnerReplyContext::new();
 
-    // Lock the server queue, put the outbound message and the reply context
-    // into the server's queue, unlock queue and notify the server that a new
-    // message has arrived.
-    let mut q = srvq.lockq();
-    q.push_back(ServerQueueNode {
+    srvq.push(ServerQueueNode {
       msg: out,
       reply: rctx.clone()
     });
-    drop(q);
-    srvq.notify();
 
-    // Wait for a reply on the reply context
-    rctx.wait()
+    let reply = rctx.get()?;
+    Ok(reply)
+  }
+
+  /// Same as [`send`](#method.send) but for use in `async` contexts.
+  pub async fn asend(&self, out: S) -> Result<R, Error> {
+    let srvq = match self.srvq.upgrade() {
+      Some(srvq) => srvq,
+      None => return Err(Error::ServerDisappeared)
+    };
+
+    let rctx = InnerReplyContext::new();
+
+    srvq.push(ServerQueueNode {
+      msg: out,
+      reply: rctx.clone()
+    });
+
+    let result = rctx.aget().await?;
+
+    Ok(result)
   }
 }
 

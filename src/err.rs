@@ -11,6 +11,14 @@ pub enum Error {
 
 impl std::error::Error for Error {}
 
+impl From<crate::rctx::Error> for Error {
+  fn from(err: crate::rctx::Error) -> Self {
+    match err {
+      crate::rctx::Error::Aborted => Error::Aborted
+    }
+  }
+}
+
 impl fmt::Display for Error {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match &*self {

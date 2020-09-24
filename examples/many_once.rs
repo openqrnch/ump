@@ -32,7 +32,7 @@ fn main() {
     while count < nclients {
       // Wait for data to arrive from a client
       println!("Server waiting for message ..");
-      let (data, cctx) = server.wait();
+      let (data, rctx) = server.wait();
 
       println!("Server received: '{}'", data);
 
@@ -41,7 +41,7 @@ fn main() {
       // Reply to client
       let reply = format!("Hello, {}!", data);
       println!("Server replying '{}'", reply);
-      cctx.reply(reply).unwrap();
+      rctx.reply(reply).unwrap();
 
       // Increase message counter
       count += 1;

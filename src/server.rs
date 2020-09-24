@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::nq::NotifyQueue;
+use sigq::Queue as NotifyQueue;
+
 use crate::rctx::ReplyContext;
 use crate::srvq::ServerQueueNode;
 
@@ -15,7 +16,11 @@ pub struct Server<S, R> {
   pub(crate) srvq: Arc<NotifyQueue<ServerQueueNode<S, R>>>
 }
 
-impl<S, R> Server<S, R> {
+impl<S, R> Server<S, R>
+where
+  S: 'static + Send,
+  R: 'static + Send
+{
   /// Block and wait for an incoming message from a
   /// [`Client`](struct.Client.html).
   ///
@@ -23,20 +28,7 @@ impl<S, R> Server<S, R> {
   /// must call `reply()` on the reply context to pass a return value to the
   /// client.
   pub fn wait(&self) -> (S, ReplyContext<R>) {
-    // Lock server queue
-    let mut mg = self.srvq.lockq();
-
-    // Get the oldest node in the queue
-    let node = loop {
-      match mg.pop_front() {
-        Some(node) => {
-          break node;
-        }
-        None => {
-          mg = self.srvq.signal.wait(mg).unwrap();
-        }
-      }
-    };
+    let node = self.srvq.pop();
 
     // Extract the data from the node
     let msg = node.msg;
@@ -47,9 +39,20 @@ impl<S, R> Server<S, R> {
     (msg, rctx)
   }
 
-  pub fn is_empty(&self) -> bool {
-    let mg = self.srvq.lockq();
-    mg.is_empty()
+  pub async fn async_wait(&self) -> (S, ReplyContext<R>) {
+    let node = self.srvq.apop().await;
+
+    // Extract the data from the node
+    let msg = node.msg;
+
+    // Create an application reply context from the reply context in the queue
+    let rctx = ReplyContext::from(node.reply);
+
+    (msg, rctx)
+  }
+
+  pub fn was_empty(&self) -> bool {
+    self.srvq.was_empty()
   }
 }
 
