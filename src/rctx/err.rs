@@ -3,10 +3,13 @@ use std::fmt;
 /// Module-specific error codes.
 #[derive(Debug)]
 pub enum Error {
+  /// The reply was aborted.
+  Aborted,
+
   /// The public [`ReplyContext`] object is required to reply with a value.
   /// If it does not the endpoint waiting to receive a value will abort and
   /// return this error.
-  Aborted
+  NoReply
 }
 
 impl std::error::Error for Error {}
@@ -14,7 +17,8 @@ impl std::error::Error for Error {}
 impl fmt::Display for Error {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match &*self {
-      Error::Aborted => write!(f, "Aborted call")
+      Error::Aborted => write!(f, "Aborted call"),
+      Error::NoReply => write!(f, "Application failed to reply")
     }
   }
 }

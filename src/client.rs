@@ -40,11 +40,12 @@ where
   /// # Return
   /// On success the function will return `Ok(msg)`.
   ///
-  /// If the linked server object has been released
-  /// `Err(Error:ServerDisappeared)` will be returned.
+  /// If the linked server object has been released, or is released while the
+  /// message is in the server's queue, `Err(Error:ServerDisappeared)` will be
+  /// returned.
   ///
   /// If the server never replied to the message and the reply context was
-  /// dropped `Err(Error::Aborted)` will be returned.
+  /// dropped `Err(Error::NoReply)` will be returned.
   pub fn send(&self, out: S) -> Result<R, Error> {
     // Make sure the server still lives; Weak -> Arc
     let srvq = match self.srvq.upgrade() {
@@ -66,6 +67,10 @@ where
       reply: rctx.clone()
     });
 
+    // Drop the strong server queue ref immediately so it's not held as a
+    // strong ref while we're waiting for a reply.
+    drop(srvq);
+
     let reply = rctx.get()?;
     Ok(reply)
   }
@@ -83,6 +88,10 @@ where
       msg: out,
       reply: rctx.clone()
     });
+
+    // Drop the strong server queue ref immediately so it's not held as a
+    // strong ref while we're waiting for a reply.
+    drop(srvq);
 
     let result = rctx.aget().await?;
 

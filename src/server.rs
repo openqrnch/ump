@@ -4,7 +4,6 @@ use sigq::Queue as NotifyQueue;
 
 use crate::rctx::{InnerReplyContext, ReplyContext};
 
-
 pub(crate) struct ServerQueueNode<S, R> {
   /// Raw message being sent from the client to the server.
   pub(crate) msg: S,
@@ -42,11 +41,13 @@ where
     let msg = node.msg;
 
     // Create an application reply context from the reply context in the queue
+    // Implicitly changes state of the reply context from Queued to Waiting
     let rctx = ReplyContext::from(node.reply);
 
     (msg, rctx)
   }
 
+  /// Same as [`wait()`](#method.wait), but for use in an `async` context.
   pub async fn async_wait(&self) -> (S, ReplyContext<R>) {
     let node = self.srvq.apop().await;
 
@@ -54,11 +55,15 @@ where
     let msg = node.msg;
 
     // Create an application reply context from the reply context in the queue
+    // Implicitly changes state of the reply context from Queued to Waiting
     let rctx = ReplyContext::from(node.reply);
 
     (msg, rctx)
   }
 
+  /// Returns a boolean indicating whether the queue is/was empty.  This isn't
+  /// really useful unless used in very specific situations.  It mostly exists
+  /// for test cases.
   pub fn was_empty(&self) -> bool {
     self.srvq.was_empty()
   }

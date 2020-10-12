@@ -73,7 +73,9 @@
 //!
 //! # Semantics
 //! There are some potentially useful semantics quirks that can be good to know
-//! about, but some of them should be used with caution.
+//! about, but some of them should be used with caution.  This section will
+//! describe some semantics that you can rely on, and others that you should be
+//! careful about relying on.
 //!
 //! ## Stable invariants
 //!
@@ -92,7 +94,7 @@
 //!
 //! ## Unstable invariants
 //!
-//! These are invaiants you can trust will work in the current version, but
+//! These are invariants you can trust will work in the current version, but
 //! they exist merely as a side-effect of the current implementation.  Avoid
 //! using these if possible.
 //!
