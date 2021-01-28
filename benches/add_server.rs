@@ -11,7 +11,7 @@ enum Ops {
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-  let (server, client) = channel();
+  let (server, client) = channel::<Ops, i32, ()>();
 
   let server_thread = thread::spawn(move || {
     let mut croak = false;

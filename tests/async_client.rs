@@ -14,11 +14,11 @@ enum Reply {
 
 #[test]
 fn async_client() {
-  let mut tokrt = tokio::runtime::Runtime::new().unwrap();
+  let tokrt = tokio::runtime::Runtime::new().unwrap();
 
   let niterations = 256;
 
-  let (server, client) = channel::<Request, Reply>();
+  let (server, client) = channel::<Request, Reply, ()>();
 
   let server_thread = thread::spawn(move || loop {
     let (req, rctx) = server.wait();

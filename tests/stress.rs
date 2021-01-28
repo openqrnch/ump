@@ -10,7 +10,7 @@ enum Ops {
 
 #[test]
 fn one_at_a_time() {
-  let (server, client) = channel();
+  let (server, client) = channel::<Ops, i32, ()>();
 
   let server_thread = thread::spawn(move || {
     let mut croak = false;
@@ -49,7 +49,7 @@ fn one_at_a_time() {
 
 #[test]
 fn one_at_a_time_threaded_handler() {
-  let (server, client) = channel();
+  let (server, client) = channel::<Ops, i32, ()>();
 
   let niterations = 256;
 

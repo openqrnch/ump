@@ -22,7 +22,7 @@ fn main() {
   };
 
   // Create server and original client
-  let (server, client) = channel::<String, String>();
+  let (server, client) = channel::<String, String, ()>();
 
   // Launch server thread
   let server_thread = thread::spawn(move || {

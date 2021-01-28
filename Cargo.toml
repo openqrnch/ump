@@ -1,6 +1,6 @@
 [package]
 name = "ump"
-version = "0.6.4"
+version = "0.7.0"
 authors = ["Jan Danielsson <jan.danielsson@qrnch.com>"]
 edition = "2018"
 license = "0BSD"
@@ -14,7 +14,7 @@ sigq = { version = "0.9" }
 
 [dev-dependencies]
 criterion = "0.3"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 [[bench]]
 name = "add_server"

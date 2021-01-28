@@ -6,7 +6,7 @@ use ump::{channel, Error};
 
 #[test]
 fn sync_expect_server_death() {
-  let (server, client) = channel::<String, String>();
+  let (server, client) = channel::<String, String, ()>();
 
   let server_thread = thread::spawn(move || {
     // Should be doing something more robust ..
@@ -32,9 +32,9 @@ fn sync_expect_server_death() {
 
 #[test]
 fn async_expect_server_death() {
-  let mut tokrt = tokio::runtime::Runtime::new().unwrap();
+  let tokrt = tokio::runtime::Runtime::new().unwrap();
 
-  let (server, client) = channel::<String, String>();
+  let (server, client) = channel::<String, String, ()>();
 
   let server_thread = thread::spawn(move || {
     // Should be doing something more robust ..

@@ -1,33 +1,29 @@
 //! Micro Message Pass (ump) is a library for passing messages between
 //! thread/tasks.  It has some similarities with the common mpsc channel
-//! libraries, but with the most notable difference that in `ump` the channel
-//! is bidirectional.  The terms "client"/"server" are used rather than
-//! "tx"/"rx".  In `ump` the client initiates all message transfers, and every
-//! message pass from a client to a server requires a response from the server.
+//! libraries, but with the most notable difference that each time a client
+//! sends a message the server must send back a reply.
 //!
 //! The primary purpose of ump is to create simple RPC like designs, but
 //! between threads/tasks within a process rather than between processes over
 //! networks.
 //!
 //! # High-level usage overview
-//! An application calls [`channel`](fn.channel.html) to create a linked pair
-//! of a [`Server`](struct.Server.html) and a [`Client`](struct.Client.html).
+//! An application calls [`channel`] to create a linked pair of a [`Server`]
+//! and a [`Client`].
 //!
-//! The server calls
-//! [`Server::wait()`](struct.Server.html#method.wait)/
-//! [`Server::async_wait()`](struct.Server.html#method.async_wait), which
+//! The server calls [`Server::wait()`]/[`Server::async_wait()`], which
 //! blocks and waits for an incoming message from a client.
 //!
-//! A client, on a separate thread, calls
-//! [`Client::send()`](struct.Client.html#method.send)/
-//! [`Client::asend()`](struct.Client.html#method.asend) to send a message to
-//! the server.
+//! A client, in a separate thread or task, calls
+//! [`Client::send()`]/[`Client::asend()`] to send a message to the server.
 //!
 //! The server's wait call returns two objects:  The message sent by the
-//! client, and a [`ReplyContext`](struct.ReplyContext.html).  After processing
-//! its application-defined message, the server *must* call the
-//! [`ReplyContext::reply()`](struct.ReplyContext.html#method.reply) on the
-//! returned reply context object to return a reply message to the client.
+//! client, and a [`ReplyContext`].
+//!
+//! After processing its application-defined message, the server *must* call
+//! the [`ReplyContext::reply()`] on the returned reply context object to
+//! return a reply message to the client.
+//!
 //! Typically the server calls wait again to wait for next message from a
 //! client.
 //!
@@ -40,7 +36,7 @@
 //! use ump::channel;
 //!
 //! fn main() {
-//!  let (server, client) = channel::<String, String>();
+//!  let (server, client) = channel::<String, String, ()>();
 //!
 //!  let server_thread = thread::spawn(move || {
 //!    // Wait for data to arrive from a client
@@ -68,18 +64,20 @@
 //!  server_thread.join().unwrap();
 //! }
 //! ```
-//! (In practice it's more likely that the channel types are `enum`s used to
-//! indicate command/return type with associated data).
+//! In practice the send/reply types will probably be `enum`s used to
+//! indicate command/return type with associated data.  The third type argument
+//! to [`channel`] is an error type that can be used to explicitly pass errors
+//! back to the sender.
 //!
 //! # Semantics
-//! There are some potentially useful semantics quirks that can be good to know
+//! There are some potentially useful semantic quirks that can be good to know
 //! about, but some of them should be used with caution.  This section will
 //! describe some semantics that you can rely on, and others that you should be
 //! careful about relying on.
 //!
 //! ## Stable invariants
 //!
-//! These are behaviors which should not change in coming versions.
+//! These are behaviors which should not change in future versions.
 //!
 //! - The reply contexts are independent of the `Server` context.  This has
 //!   some useful implications for server threads that spawn separate threads
@@ -96,7 +94,7 @@
 //!
 //! These are invariants you can trust will work in the current version, but
 //! they exist merely as a side-effect of the current implementation.  Avoid
-//! using these if possible.
+//! relying on these if possible.
 //!
 //! - A single client can be used from two different threads.  If a `Client`
 //!   object in placed in an Arc, is cloned and passed to another thread/task
@@ -119,20 +117,25 @@ pub use crate::client::Client;
 pub use crate::rctx::ReplyContext;
 pub use crate::server::Server;
 
-/// Create a pair of linked `Server` and `Client` object.
+/// Create a pair of linked [`Server`] and [`Client`] objects.
 ///
-/// The `Server` object is used to wait for incoming messages from connected
+/// The [`Server`] object is used to wait for incoming messages from connected
 /// clients.  Once a message arrives it must reply to it using a
-/// [`ReplyContext`](struct.ReplyContext.html) that's returned to it in the
-/// same call that returned the message.
+/// [`ReplyContext`] that's returned to it in the same call that returned the
+/// message.
 ///
-/// The `Client` object can be used to send messages to the `Server`.  The
-/// `send()` call will not return until the server has replied.
+/// The [`Client`] object can be used to send messages to the [`Server`].  The
+/// [`Client::send()`] call will not return until the server has replied.
 ///
-/// Clients can be cloned; each clone will create a new client object that is
-/// connected to the same server, but is completely independent of the original
-/// client.
-pub fn channel<S, R>() -> (Server<S, R>, Client<S, R>) {
+/// Clients can be [cloned](Client::clone()); each clone will create a
+/// new client object that is connected to the same server object, but is
+/// completely independent of the original client.
+///
+/// The `S` type parameter is the "send" data type that clients will transfer
+/// to the server.  The `R` type parameter is the "receive" data type that
+/// clients will receive from the server.  The `E` type parameter can be used
+/// to return application specific errors from the server to the client.
+pub fn channel<S, R, E>() -> (Server<S, R, E>, Client<S, R, E>) {
   let srvq = Arc::new(NotifyQueue::new());
   let server = Server {
     srvq: Arc::clone(&srvq)

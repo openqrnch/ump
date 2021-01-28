@@ -10,20 +10,21 @@ use crate::server::ServerQueueNode;
 ///
 /// Each instantiation of a `Client` object is itself an isolated client with
 /// regards to the server context.  By cloning a client a new independent
-/// client is created.  (Independent here meaning that it is still tied to the
-/// same server object, but the new client can be passed to a separate thread
-/// and can independently make calls to the server).
-pub struct Client<S, R> {
+/// client is created.  ("Independent" here meaning that it is still tied to
+/// the same server object, but the new client can be passed to a separate
+/// thread and can independently make calls to the server).
+pub struct Client<S, R, E> {
   /// Weak reference to server queue.
   ///
   /// The server context holds the only strong reference to the queue.  This
   /// allows the clients to detect when the server has terminated.
-  pub(crate) srvq: Weak<NotifyQueue<ServerQueueNode<S, R>>>
+  pub(crate) srvq: Weak<NotifyQueue<ServerQueueNode<S, R, E>>>
 }
 
-impl<S, R> Client<S, R>
+impl<S, R, E> Client<S, R, E>
 where
-  R: 'static + Send
+  R: 'static + Send,
+  E: 'static + Send
 {
   /// Send a message to the server, wait for a reply, and return the reply.
   ///
@@ -33,9 +34,9 @@ where
   ///
   /// This method is _currently_ reentrant: It is safe to use share a single
   /// `Client` among multiple threads.  _This may change in the future_; it's
-  /// best not to rely on this.  The recommended way to send messages to a
-  /// server from multiple threads is to clone the `Client` and move the clones
-  /// to the separate threads.
+  /// recommended to not rely on this.  The recommended way to send messages to
+  /// a server from multiple threads is to clone the `Client` and assign one
+  /// separate `Client` to each thread.
   ///
   /// # Return
   /// On success the function will return `Ok(msg)`.
@@ -46,7 +47,11 @@ where
   ///
   /// If the server never replied to the message and the reply context was
   /// dropped `Err(Error::NoReply)` will be returned.
-  pub fn send(&self, out: S) -> Result<R, Error> {
+  ///
+  /// If an application specific error occurs it will be returned as a
+  /// `Err(Error::App(E))`, where `E` is the error type used when creating the
+  /// [`channel`](crate::channel).
+  pub fn send(&self, out: S) -> Result<R, Error<E>> {
     // Make sure the server still lives; Weak -> Arc
     let srvq = match self.srvq.upgrade() {
       Some(srvq) => srvq,
@@ -75,8 +80,8 @@ where
     Ok(reply)
   }
 
-  /// Same as [`send`](#method.send) but for use in `async` contexts.
-  pub async fn asend(&self, out: S) -> Result<R, Error> {
+  /// Same as [`Client::send()`] but for use in `async` contexts.
+  pub async fn asend(&self, out: S) -> Result<R, Error<E>> {
     let srvq = match self.srvq.upgrade() {
       Some(srvq) => srvq,
       None => return Err(Error::ServerDisappeared)
@@ -100,14 +105,15 @@ where
 }
 
 
-/// When a client is cloned then create an entirely new client.  It will be
-/// linked to the same server, but in all other respects the clone is a
-/// completely new client.
-///
-/// This means that a cloned client can be passed to a new thread/task and make
-/// new independent calls to the server without any risk of collision between
-/// clone and the original client object.
-impl<S, R> Clone for Client<S, R> {
+impl<S, R, E> Clone for Client<S, R, E> {
+  /// Clone a client.
+  ///
+  /// When a client is cloned the new object will be linked to the same server,
+  /// but in all other respects the clone is a completely independent client.
+  ///
+  /// This means that a cloned client can be passed to a new thread/task and
+  /// make new independent calls to the server without any risk of collision
+  /// between clone and the original client object.
   fn clone(&self) -> Self {
     Client {
       srvq: Weak::clone(&self.srvq)

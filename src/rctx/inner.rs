@@ -6,7 +6,7 @@ use std::thread;
 
 use crate::rctx::err::Error;
 
-pub(crate) enum State<I> {
+pub(crate) enum State<I, E> {
   /// (Still) in queue, waiting to be picked up by the server.
   Queued,
 
@@ -15,6 +15,9 @@ pub(crate) enum State<I> {
 
   /// Have a reply, but it wasn't delivered yet.
   Item(I),
+
+  /// The application returned an error.
+  AppErr(E),
 
   /// Reply is being returned to caller.
   Finalized,
@@ -29,12 +32,12 @@ pub(crate) enum State<I> {
   NoReply
 }
 
-pub struct InnerReplyContext<I> {
+pub struct InnerReplyContext<I, E> {
   pub(crate) signal: Arc<Condvar>,
-  pub(crate) data: Arc<Mutex<State<I>>>
+  pub(crate) data: Arc<Mutex<State<I, E>>>
 }
 
-impl<I: 'static + Send> InnerReplyContext<I> {
+impl<I: 'static + Send, E> InnerReplyContext<I, E> {
   /// Create a new reply context in "Queued" state.
   pub(crate) fn new() -> Self {
     InnerReplyContext {
@@ -52,12 +55,21 @@ impl<I: 'static + Send> InnerReplyContext<I> {
     self.signal.notify_one();
   }
 
+  /// Store an error and signal the originator that a result has arrived.
+  pub fn fail(&self, err: E) {
+    let mut mg = self.data.lock().unwrap();
+    *mg = State::AppErr(err);
+    drop(mg);
+
+    self.signal.notify_one();
+  }
+
   /// Retreive reply.  If a reply has not arrived yet then enter a loop that
   /// waits for a reply to arrive.
-  pub fn get(&self) -> Result<I, Error> {
+  pub fn get(&self) -> Result<I, Error<E>> {
     let mut mg = self.data.lock().unwrap();
 
-    let msg = loop {
+    let ret = loop {
       match &*mg {
         State::Queued | State::Waiting => {
           // Still waiting for server to report back with data
@@ -69,10 +81,21 @@ impl<I: 'static + Send> InnerReplyContext<I> {
           if let State::Item(msg) =
             std::mem::replace(&mut *mg, State::Finalized)
           {
-            break msg;
+            break Ok(msg);
           } else {
             // We're *really* in trouble if this happens ..
-            panic!("Unexpected state; not State::Message()");
+            panic!("Unexpected state; not State::Item()");
+          }
+        }
+        State::AppErr(_err) => {
+          // Set Finalized state and return error
+          if let State::AppErr(err) =
+            std::mem::replace(&mut *mg, State::Finalized)
+          {
+            break Err(Error::App(err));
+          } else {
+            // We're *really* in trouble if this happens ..
+            panic!("Unexpected state; not State::AppErr()");
           }
         }
         State::Finalized => {
@@ -91,15 +114,15 @@ impl<I: 'static + Send> InnerReplyContext<I> {
     };
     drop(mg);
 
-    Ok(msg)
+    ret
   }
 
-  pub fn aget(&self) -> WaitReplyFuture<I> {
+  pub fn aget(&self) -> WaitReplyFuture<I, E> {
     WaitReplyFuture::new(self)
   }
 }
 
-impl<T> Clone for InnerReplyContext<T> {
+impl<I, E> Clone for InnerReplyContext<I, E> {
   fn clone(&self) -> Self {
     InnerReplyContext {
       signal: Arc::clone(&self.signal),
@@ -108,7 +131,7 @@ impl<T> Clone for InnerReplyContext<T> {
   }
 }
 
-impl<I> Drop for InnerReplyContext<I> {
+impl<I, E> Drop for InnerReplyContext<I, E> {
   /// If the reply context never left the server queue before being destroyed
   /// it means that the server has died.  Signal this to the original caller
   /// waiting for a reply.
@@ -130,13 +153,13 @@ impl<I> Drop for InnerReplyContext<I> {
 }
 
 
-pub struct WaitReplyFuture<I> {
+pub struct WaitReplyFuture<I, E> {
   signal: Arc<Condvar>,
-  data: Arc<Mutex<State<I>>>
+  data: Arc<Mutex<State<I, E>>>
 }
 
-impl<I> WaitReplyFuture<I> {
-  fn new(irctx: &InnerReplyContext<I>) -> Self {
+impl<I, E> WaitReplyFuture<I, E> {
+  fn new(irctx: &InnerReplyContext<I, E>) -> Self {
     WaitReplyFuture {
       signal: Arc::clone(&irctx.signal),
       data: Arc::clone(&irctx.data)
@@ -144,8 +167,8 @@ impl<I> WaitReplyFuture<I> {
   }
 }
 
-impl<I: 'static + Send> Future for WaitReplyFuture<I> {
-  type Output = Result<I, Error>;
+impl<I: 'static + Send, E: 'static + Send> Future for WaitReplyFuture<I, E> {
+  type Output = Result<I, Error<E>>;
   fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
     let mut state = self.data.lock().unwrap();
     match &*state {
@@ -171,7 +194,17 @@ impl<I: 'static + Send> Future for WaitReplyFuture<I> {
           Poll::Ready(Ok(msg))
         } else {
           // We're *really* in trouble if this happens ..
-          panic!("Unexpected state; not State::Message()");
+          panic!("Unexpected state; not State::Item()");
+        }
+      }
+      State::AppErr(_err) => {
+        if let State::AppErr(err) =
+          std::mem::replace(&mut *state, State::Finalized)
+        {
+          Poll::Ready(Err(Error::App(err)))
+        } else {
+          // We're *really* in trouble if this happens ..
+          panic!("Unexpected state; not State::App()");
         }
       }
       State::Finalized => {

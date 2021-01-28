@@ -4,37 +4,36 @@ use sigq::Queue as NotifyQueue;
 
 use crate::rctx::{InnerReplyContext, ReplyContext};
 
-pub(crate) struct ServerQueueNode<S, R> {
+pub(crate) struct ServerQueueNode<S, R, E> {
   /// Raw message being sent from the client to the server.
   pub(crate) msg: S,
 
   /// Keep track of data needed to share reply data.
-  pub(crate) reply: InnerReplyContext<R>
+  pub(crate) reply: InnerReplyContext<R, E>
 }
 
 /// Representation of a server object.
 ///
-/// Each instantiation of a `Client` object is itself an isolated client with
-/// regards to the server context.  By cloning a client a new independent
-/// client is created.  (Independent here meaning that it is still tied to the
-/// same server object, but it the new client can be passed to a separate
-/// thread and can independently make calls to the server).
-pub struct Server<S, R> {
-  pub(crate) srvq: Arc<NotifyQueue<ServerQueueNode<S, R>>>
+/// Each instantiation of a [`Server`] object represents an end-point which
+/// will be used to receive messages from connected [`Client`](crate::Client)
+/// objects.
+pub struct Server<S, R, E> {
+  pub(crate) srvq: Arc<NotifyQueue<ServerQueueNode<S, R, E>>>
 }
 
-impl<S, R> Server<S, R>
+impl<S, R, E> Server<S, R, E>
 where
   S: 'static + Send,
-  R: 'static + Send
+  R: 'static + Send,
+  E: 'static + Send
 {
-  /// Block and wait for an incoming message from a
-  /// [`Client`](struct.Client.html).
+  /// Block and wait, indefinitely, for an incoming message from a
+  /// [`Client`](crate::Client).
   ///
   /// Returns the message sent by the client and a reply context.  The server
-  /// must call `reply()` on the reply context to pass a return value to the
-  /// client.
-  pub fn wait(&self) -> (S, ReplyContext<R>) {
+  /// must call [`ReplyContext::reply()`] on the reply context to pass a return
+  /// value to the client.
+  pub fn wait(&self) -> (S, ReplyContext<R, E>) {
     let node = self.srvq.pop();
 
     // Extract the data from the node
@@ -47,8 +46,8 @@ where
     (msg, rctx)
   }
 
-  /// Same as [`wait()`](#method.wait), but for use in an `async` context.
-  pub async fn async_wait(&self) -> (S, ReplyContext<R>) {
+  /// Same as [`Server::wait()`], but for use in an `async` context.
+  pub async fn async_wait(&self) -> (S, ReplyContext<R, E>) {
     let node = self.srvq.apop().await;
 
     // Extract the data from the node

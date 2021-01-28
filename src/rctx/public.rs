@@ -7,18 +7,82 @@ use crate::rctx::InnerReplyContext;
 /// This is safe to pass to applications which are meant to only be able to put
 /// a value through the `ReplyContext` channel, but not extract the value from
 /// it.
-pub struct ReplyContext<I> {
-  inner: InnerReplyContext<I>,
+pub struct ReplyContext<I, E> {
+  inner: InnerReplyContext<I, E>,
   did_handover: bool
 }
 
-impl<I: 'static + Send> ReplyContext<I> {
+impl<I: 'static + Send, E> ReplyContext<I, E> {
   /// Send a reply back to originating client.
+  ///
+  /// # Example
+  /// ```
+  /// use std::thread;
+  /// use ump::channel;
+  ///
+  /// fn main() {
+  ///   let (server, client) = channel::<String, String, ()>();
+  ///   let server_thread = thread::spawn(move || {
+  ///     let (data, rctx) = server.wait();
+  ///     let reply = format!("Hello, {}!", data);
+  ///     rctx.reply(reply).unwrap();
+  ///   });
+  ///   let msg = String::from("Client");
+  ///   let reply = client.send(String::from(msg)).unwrap();
+  ///   assert_eq!(reply, "Hello, Client!");
+  ///   server_thread.join().unwrap();
+  /// }
+  /// ```
   ///
   /// # Semantics
   /// This call is safe to make after the server context has been released.
-  pub fn reply(mut self, data: I) -> Result<(), Error> {
+  pub fn reply(mut self, data: I) -> Result<(), Error<E>> {
     self.inner.put(data);
+
+    self.did_handover = true;
+
+    Ok(())
+  }
+
+  /// Return an error to originating client.
+  /// This will cause the calling client to return an error.  The error passed
+  /// in the `err` parameter will be wrapped in a `Error::App(err)`.
+  ///
+  /// # Example
+  ///
+  /// ```
+  /// use std::thread;
+  /// use ump::{channel, Error};
+  ///
+  /// #[derive(Debug, PartialEq)]
+  /// enum MyError {
+  ///   SomeError(String)
+  /// }
+  ///
+  /// fn main() {
+  ///   let (server, client) = channel::<String, String, MyError>();
+  ///   let server_thread = thread::spawn(move || {
+  ///     let (_, rctx) = server.wait();
+  ///     rctx.fail(MyError::SomeError("failed".to_string())).unwrap();
+  ///   });
+  ///   let msg = String::from("Client");
+  ///   let reply = client.send(String::from(msg));
+  ///   match reply {
+  ///     Err(Error::App(MyError::SomeError(s))) => {
+  ///       assert_eq!(s, "failed");
+  ///     }
+  ///     _ => {
+  ///       panic!("Unexpected return value");
+  ///     }
+  ///   }
+  ///   server_thread.join().unwrap();
+  /// }
+  /// ```
+  ///
+  /// # Semantics
+  /// This call is safe to make after the server context has been released.
+  pub fn fail(mut self, err: E) -> Result<(), Error<E>> {
+    self.inner.fail(err);
 
     self.did_handover = true;
 
@@ -26,7 +90,7 @@ impl<I: 'static + Send> ReplyContext<I> {
   }
 }
 
-impl<I> Drop for ReplyContext<I> {
+impl<I, E> Drop for ReplyContext<I, E> {
   /// If the reply context is dropped while still waiting for a reply then
   /// report back to the caller that it should expect no reply.
   fn drop(&mut self) {
@@ -48,11 +112,11 @@ impl<I> Drop for ReplyContext<I> {
   }
 }
 
-impl<I> From<InnerReplyContext<I>> for ReplyContext<I> {
+impl<I, E> From<InnerReplyContext<I, E>> for ReplyContext<I, E> {
   /// Transform an internal reply context into a public one and change the
   /// state from Queued to Waiting to signal that the node has left the
   /// queue.
-  fn from(inner: InnerReplyContext<I>) -> Self {
+  fn from(inner: InnerReplyContext<I, E>) -> Self {
     // Switch state from "Queued" to "Waiting", to mark that the reply context
     // has been "picked up".
     let mut mg = inner.data.lock().unwrap();
